@@ -166,6 +166,21 @@
       text-align: center;
       z-index: 15;
     }
+    #foodstats {
+      position: absolute;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(10,10,10,0.65);
+      border-radius: 1em;
+      padding: 0.5em 2em;
+      font-size: 1.05em;
+      color: #efefcc;
+      opacity: 0.93;
+      pointer-events: none;
+      text-align: center;
+      z-index: 15;
+    }
     .btn-row {
       display: flex;
       gap: 0.6em; /* Reduced gap */
@@ -362,6 +377,10 @@
         <label for="zoom">Zoom <span class="slider-value" id="zoomLabel"></span></label>
         <input type="range" id="zoom" min="1" max="7" value="3">
       </div>
+      <div class="control-group">
+        <label for="simSpeed">Sim Speed <span class="slider-value" id="simSpeedLabel"></span></label>
+        <input type="range" id="simSpeed" min="1" max="4" value="1">
+      </div>
       <div class="btn-row">
         <button id="playPause">Pause</button>
         <button id="step">Step</button>
@@ -383,6 +402,7 @@
   <div id="canvas-container">
     <canvas id="antfarm" width="900" height="600"></canvas>
     <div id="statusbar"></div>
+    <div id="foodstats"></div>
   </div>
 </div>
 <script>
@@ -390,6 +410,7 @@
   const canvas = document.getElementById('antfarm');
   const ctx = canvas.getContext('2d');
   const statusbar = document.getElementById('statusbar');
+  const foodstats = document.getElementById('foodstats');
   const canvasContainer = document.getElementById('canvas-container');
   const controls = document.getElementById('controls');
   const controlsToggleButton = document.getElementById('controls-toggle-button');
@@ -404,10 +425,13 @@
   let cols = Math.floor(width / gridSize);
   let rows = Math.floor(height / gridSize);
   let paused = false;
+  let simSpeed = 1;
   let showPheromones = true;
   let stepOnce = false;
   let followAnt = false;
   let followedAnt = null;
+  let foodCollected = 0;
+  let totalFoodCollected = parseInt(localStorage.getItem('totalFoodCollected') || '0');
 
 
   // Panning variables
@@ -434,6 +458,8 @@
   const foodCountLabel = document.getElementById('foodCountLabel');
   const zoomSlider = document.getElementById('zoom');
   const zoomLabel = document.getElementById('zoomLabel');
+  const simSpeedSlider = document.getElementById('simSpeed');
+  const simSpeedLabel = document.getElementById('simSpeedLabel');
 
 
   const showPheromonesToggle = document.getElementById('showPheromones');
@@ -448,6 +474,7 @@
     evapRateLabel.textContent = evapRateSlider.value;
     foodCountLabel.textContent = foodCountSlider.value;
     zoomLabel.textContent = zoomSlider.value;
+    simSpeedLabel.textContent = simSpeedSlider.value + 'x';
   }
 
 
@@ -586,7 +613,13 @@
         let dx = qx - this.x, dy = qy - this.y;
         let dist = Math.hypot(dx, dy);
         if (dist > 1) { this.dx = dx / dist; this.dy = dy / dist; }
-        if (dist < 4) this.carrying = 0;
+        if (dist < 4) {
+          this.carrying = 0;
+          foodCollected++;
+          totalFoodCollected++;
+          localStorage.setItem('totalFoodCollected', totalFoodCollected);
+          foodstats.textContent = `Food: ${foodCollected} | Total: ${totalFoodCollected}`;
+        }
       } else {
         if (Math.random() < 0.06) {
           let best = null, bestVal = 0;
@@ -890,7 +923,9 @@
 
   function loop() {
     if (!paused || stepOnce) {
-      step();
+      for (let i = 0; i < simSpeed; i++) {
+        step();
+      }
       stepOnce = false;
     }
     requestAnimationFrame(loop);
@@ -912,6 +947,9 @@
     followAnt = false;
     followedAnt = null;
     followAntToggle.checked = false;
+    simSpeed = +simSpeedSlider.value;
+    foodCollected = 0;
+    foodstats.textContent = `Food: ${foodCollected} | Total: ${totalFoodCollected}`;
     draw(); // Initial draw
     statusbar.textContent = 'Ants dig, follow trails, pick up food, and deliver it to the queen!';
   }
@@ -948,6 +986,10 @@
   zoomSlider.oninput = () => {
     updateSliderLabels();
     draw(); // Redraw immediately on zoom change
+  };
+  simSpeedSlider.oninput = () => {
+    simSpeed = +simSpeedSlider.value;
+    updateSliderLabels();
   };
 
 
