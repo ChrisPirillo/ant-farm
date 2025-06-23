@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ant Farm Simulator</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #23241f;
+      overflow: hidden; /* Prevent body scrollbars */
+    }
+    #container {
+      position: relative; /* Base for absolute positioning of children */
+      height: 100vh;
+      width: 100vw;
+    }
+    #controls {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100vh;
+      width: 220px; /* Even thinner by default */
+      min-width: 160px; /* Adjusted min-width */
+      background: rgba(34,32,25,0.98);
+      color: #f3efd4;
+      font-family: sans-serif;
+      box-shadow: 4px 0 32px #0006;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+      transition: left 0.3s ease-in-out, width 0.3s ease-in-out, min-width 0.3s ease-in-out;
+      overflow-y: auto; /* Allow scrolling for controls if needed */
+      overflow-x: hidden; /* Hide horizontal overflow */
+    }
+    #controls-header {
+      padding: 1rem 0.8rem; /* Consistent padding */
+      margin-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #controls-header h2 {
+      margin: 0;
+      font-size: 1.2rem;
+      white-space: nowrap; /* Prevent wrapping */
+      transition: opacity 0.3s;
+    }
+    #controls-content {
+      flex-grow: 1;
+      padding: 0 0.8rem 1rem 0.8rem; /* Consistent padding, no top padding as header has it */
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem; /* Consistent gap between groups */
+      transition: opacity 0.3s;
+    }
+
+
+    #controls.collapsed {
+      left: -170px; /* Slide out of view (220 - 50 = 170) */
+      width: 50px;
+      min-width: 50px;
+    }
+    #controls.collapsed #controls-header h2,
+    #controls.collapsed #controls-content {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.1s;
+    }
+    #controls.collapsed #controls-toggle-button {
+      position: absolute;
+      right: -10px; /* Adjust based on button size and collapsed width */
+      top: 50%;
+      transform: translateY(-50%) rotate(180deg); /* Rotate arrow when collapsed */
+      background: #7a7a7a;
+      box-shadow: 0 0 8px rgba(0,0,0,0.5);
+    }
+    #controls-toggle-button {
+      background: #5d5d5d;
+      color: #f3efd4;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+      cursor: pointer;
+      transition: transform 0.3s ease-in-out, right 0.3s ease-in-out, background 0.15s, box-shadow 0.15s;
+    }
+    #controls-toggle-button:hover {
+      background: #7a7a7a;
+    }
+    #controls-toggle-button svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+
+    .control-group {
+      margin-bottom: 0.5em; /* Tighter spacing */
+      padding-bottom: 0.5em;
+      border-bottom: 1px dashed rgba(255,255,255,0.08); /* Subtle separator */
+      transition: opacity 0.3s;
+    }
+    .control-group:last-of-type {
+      border-bottom: none; /* No border for the last one */
+    }
+    label { font-size: 0.95em; margin-bottom: 0.2em; display: block; } /* Smaller font, tighter margin */
+    input[type=range] { width: 100%; -webkit-appearance: none; height: 8px; border-radius: 5px; background: #5a5a4a; outline: none; }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #cab98b;
+      cursor: pointer;
+      box-shadow: 0 0 3px rgba(0,0,0,0.5);
+      margin-top: -5px; /* Adjust thumb vertical position */
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #cab98b;
+      cursor: pointer;
+      box-shadow: 0 0 3px rgba(0,0,0,0.5);
+    }
+
+
+    #canvas-container {
+      position: absolute; /* Canvas covers entire container */
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(#484a3a 0%, #1f1f17 100%);
+      overflow: hidden;
+      z-index: 5;
+    }
+    canvas {
+      background: #cab98b;
+      border-radius: 20px;
+      box-shadow: 0 0 32px #0007;
+      outline: 2px solid #a5956d33;
+      display: block;
+      cursor: grab;
+      transform-origin: center center;
+    }
+    canvas.dragging {
+      cursor: grabbing;
+    }
+    #statusbar {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(10,10,10,0.65);
+      border-radius: 1em;
+      padding: 0.5em 2em;
+      font-size: 1.05em;
+      color: #efefcc;
+      opacity: 0.93;
+      pointer-events: none;
+      text-align: center;
+      z-index: 15;
+    }
+    .btn-row {
+      display: flex;
+      gap: 0.6em; /* Reduced gap */
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 0.5rem; /* Add some top margin */
+      transition: opacity 0.3s;
+    }
+    button, select {
+      font-size: 0.9em; /* Smaller button text */
+      border-radius: 6px; /* Slightly smaller border-radius */
+      border: none;
+      padding: 0.4em 1em; /* Reduced padding */
+      background: #494736;
+      color: #f3efd4;
+      box-shadow: 0 1px 3px #0003; /* Softer shadow */
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    button:hover {
+      background: #5a5a4a;
+    }
+    button:active {
+      background:#cab98b;
+      color: #23241f;
+      transform: translateY(1px); /* Slight press effect */
+    }
+    .slider-value {
+      float: right;
+      font-family: monospace;
+      color: #bdb16d;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5em; /* Reduced gap */
+      margin-top: 0.3em; /* Reduced margin */
+      transition: opacity 0.3s;
+    }
+    .toggle-row input[type="checkbox"] {
+        /* Custom checkbox style */
+        -webkit-appearance: none;
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        border: 1px solid #bdb16d;
+        border-radius: 3px;
+        background-color: #494736;
+        cursor: pointer;
+        position: relative;
+        flex-shrink: 0; /* Prevent shrinking */
+        transition: background-color 0.15s, border-color 0.15s;
+    }
+    .toggle-row input[type="checkbox"]:checked {
+        background-color: #bdb16d;
+        border-color: #bdb16d;
+    }
+    .toggle-row input[type="checkbox"]:checked::before {
+        content: '\2713'; /* Checkmark unicode character */
+        display: block;
+        color: #23241f;
+        font-size: 14px;
+        line-height: 16px;
+        text-align: center;
+    }
+
+
+
+
+    @media (max-width: 800px) {
+      #container {
+        flex-direction: column;
+      }
+      #controls {
+        width: 100vw;
+        height: auto;
+        top: auto;
+        bottom: 0;
+        left: 0;
+        border-right: none;
+        border-top: 1px solid #1a1a1a;
+        flex-direction: row; /* For collapsed state */
+        flex-wrap: wrap; /* Allow content to wrap */
+        justify-content: center;
+        padding: 0.5em; /* Reduced padding for mobile */
+      }
+      #controls.collapsed {
+        height: 50px;
+        bottom: 0;
+        left: 0;
+        transform: translateY(calc(100% - 50px)); /* Slide up and out of view, leaving 50px visible */
+        width: 100vw;
+        flex-direction: row; /* Always row when collapsed for mobile */
+        justify-content: center;
+        align-items: center;
+        padding: 0.5em;
+      }
+      #controls.collapsed #controls-toggle-button {
+        top: 50%;
+        left: 1rem;
+        bottom: auto;
+        right: auto;
+        transform: translateY(-50%) rotate(-90deg); /* Rotate for mobile collapsed state */
+      }
+      #controls-toggle-button {
+        position: absolute; /* Keep it absolute */
+        bottom: 0.5rem; /* Closer to bottom for mobile */
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%) rotate(0deg);
+      }
+      #controls-header {
+        width: 100%;
+        justify-content: center;
+        border-bottom: none;
+        margin-bottom: 0;
+      }
+      #controls-header h2 {
+        flex-grow: 1; /* Take available space */
+        text-align: center;
+      }
+      #controls #controls-toggle-button.mobile-expanded-toggle {
+        position: absolute;
+        bottom: 0.5rem; /* Position relative to its parent (#controls) */
+        left: 50%;
+        transform: translateX(-50%);
+        right: auto; /* Ensure right is not set */
+      }
+      #controls.collapsed #controls-toggle-button.mobile-collapsed-toggle {
+          position: absolute;
+          top: 50%;
+          left: 1rem;
+          transform: translateY(-50%) rotate(-90deg);
+          right: auto;
+          bottom: auto;
+      }
+      #controls-content {
+        width: 100%;
+        padding: 0; /* No padding on mobile content */
+        gap: 0.5rem;
+      }
+      .control-group {
+        width: 48%; /* More space for two columns */
+        margin-bottom: 0.5em;
+        border-bottom: none; /* No borders for mobile */
+        padding-bottom: 0;
+      }
+      .btn-row {
+        width: 100%;
+        justify-content: center;
+        margin-top: 0.5rem;
+      }
+      .toggle-row {
+        width: 100%;
+        justify-content: center;
+        margin-top: 0.3em;
+      }
+    }
+  </style>
+</head>
+<body>
+<div id="container">
+  <div id="controls">
+    <div id="controls-header">
+      <h2>Ant Farm Controls</h2>
+      <button id="controls-toggle-button" aria-label="Toggle Controls">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+        </svg>
+      </button>
+    </div>
+    <div id="controls-content">
+      <div class="control-group">
+        <label for="antCount">Ants <span class="slider-value" id="antCountLabel"></span></label>
+        <input type="range" id="antCount" min="10" max="300" value="80">
+      </div>
+      <div class="control-group">
+        <label for="digSpeed">Dig Speed <span class="slider-value" id="digSpeedLabel"></span></label>
+        <input type="range" id="digSpeed" min="1" max="10" value="2">
+      </div>
+      <div class="control-group">
+        <label for="sandDensity">Sand Density <span class="slider-value" id="sandDensityLabel"></span></label>
+        <input type="range" id="sandDensity" min="1" max="7" value="7">
+      </div>
+      <div class="control-group">
+        <label for="evapRate">Pheromone Evap. <span class="slider-value" id="evapRateLabel"></span></label>
+        <input type="range" id="evapRate" min="1" max="500" value="80">
+      </div>
+      <div class="control-group">
+        <label for="foodCount">Food Sources <span class="slider-value" id="foodCountLabel"></span></label>
+        <input type="range" id="foodCount" min="1" max="7" value="3">
+      </div>
+      <div class="control-group">
+        <label for="zoom">Zoom <span class="slider-value" id="zoomLabel"></span></label>
+        <input type="range" id="zoom" min="1" max="7" value="3">
+      </div>
+      <div class="btn-row">
+        <button id="playPause">Pause</button>
+        <button id="step">Step</button>
+        <button id="reset">Reset</button>
+      </div>
+      <div class="toggle-row">
+        <label for="showPheromones">Show Pheromones</label>
+        <input type="checkbox" id="showPheromones" checked>
+      </div>
+      <div class="toggle-row">
+        <label for="followAnt">Follow Selected Ant</label>
+        <input type="checkbox" id="followAnt">
+      </div>
+      <div class="btn-row">
+        <button id="spawnQueen">Spawn Queen Egg</button>
+      </div>
+    </div>
+  </div>
+  <div id="canvas-container">
+    <canvas id="antfarm" width="900" height="600"></canvas>
+    <div id="statusbar"></div>
+  </div>
+</div>
+<script>
+  // ======== CORE SIMULATION PARAMETERS ========= //
+  const canvas = document.getElementById('antfarm');
+  const ctx = canvas.getContext('2d');
+  const statusbar = document.getElementById('statusbar');
+  const canvasContainer = document.getElementById('canvas-container');
+  const controls = document.getElementById('controls');
+  const controlsToggleButton = document.getElementById('controls-toggle-button');
+
+
+  // Initial canvas dimensions (will be updated by resizeCanvas)
+  let width = canvas.width;
+  let height = canvas.height;
+
+
+  let gridSize = 2; // Base grid size, will be adjusted by zoom
+  let cols = Math.floor(width / gridSize);
+  let rows = Math.floor(height / gridSize);
+  let paused = false;
+  let showPheromones = true;
+  let stepOnce = false;
+  let followAnt = false;
+  let followedAnt = null;
+
+
+  // Panning variables
+  let isDragging = false;
+  let lastMouseX, lastMouseY;
+  let dragOffsetX = 0; // Cumulative offset from panning
+  let dragOffsetY = 0;
+
+
+  // Controls
+  const antSlider = document.getElementById('antCount');
+  const antCountLabel = document.getElementById('antCountLabel');
+  const digSpeedSlider = document.getElementById('digSpeed');
+  const digSpeedLabel = document.getElementById('digSpeedLabel');
+  const sandDensitySlider = document.getElementById('sandDensity');
+  const sandDensityLabel = document.getElementById('sandDensityLabel');
+  const evapRateSlider = document.getElementById('evapRate');
+  const evapRateLabel = document.getElementById('evapRateLabel');
+  const foodCountSlider = document.getElementById('foodCount');
+  const foodCountLabel = document.getElementById('foodCountLabel');
+  const zoomSlider = document.getElementById('zoom');
+  const zoomLabel = document.getElementById('zoomLabel');
+
+
+  const showPheromonesToggle = document.getElementById('showPheromones');
+  const followAntToggle = document.getElementById('followAnt');
+
+
+  // Function to update slider labels
+  function updateSliderLabels() {
+    antCountLabel.textContent = antSlider.value;
+    digSpeedLabel.textContent = digSpeedSlider.value;
+    sandDensityLabel.textContent = sandDensitySlider.value;
+    evapRateLabel.textContent = evapRateSlider.value;
+    foodCountLabel.textContent = foodCountSlider.value;
+    zoomLabel.textContent = zoomSlider.value;
+  }
+
+
+  // Initialize slider labels
+  updateSliderLabels();
+
+
+  // ========== ENVIRONMENT + GRID ========== //
+  let grid = []; // Declare grid globally
+  function makeGrid() {
+    const newGrid = [];
+    const sandDensity = +sandDensitySlider.value;
+    for (let y = 0; y < rows; ++y) {
+      for (let x = 0; x < cols; ++x) {
+        let sand = Math.random() < 0.18 + 0.10 * sandDensity;
+        newGrid[y * cols + x] = {
+          sand: sand, tunnel: !sand, pher: 0, food: 0, queen: false, shade: 0
+        };
+      }
+    }
+    // The queen's chamber is now simply where the queen ant starts and where ants naturally tunnel.
+    // We no longer explicitly mark a square area as 'queen: true' in the grid data.
+    return newGrid;
+  }
+
+
+  // ========== FOOD + QUEEN ========== //
+  function placeFood(n) {
+    let placed = 0;
+    while (placed < n) {
+      let x = Math.floor(Math.random() * cols * 0.9) + cols * 0.05;
+      let y = Math.floor(Math.random() * (rows * 0.7)) + rows * 0.25;
+      let idx = Math.floor(y) * cols + Math.floor(x);
+      if (grid[idx] && grid[idx].sand && !grid[idx].food) {
+        grid[idx].food = 25 + Math.floor(Math.random() * 25);
+        placed++;
+      }
+    }
+  }
+
+
+  function resetFood() {
+    for (let i = 0; i < grid.length; ++i) grid[i].food = 0;
+  }
+
+
+  function resetQueen() {
+    // The queen's chamber is no longer a fixed grid area, so no need to reset grid cells.
+    // The "queen" property on cells is removed from this function.
+  }
+
+
+  // ========== ANT + BEHAVIOR ========== //
+  class Ant {
+    constructor(x, y, isQueen = false) {
+      this.x = x;
+      this.y = y;
+      this.dx = Math.random() * 2 - 1;
+      this.dy = Math.random() * 2 - 1;
+      this.phase = Math.random();
+      this.color = isQueen ? '#8B0000' : '#221a1a'; // Darker red for queen
+      this.carrying = 0; // food carried
+      this.isQueen = isQueen;
+    }
+
+
+    move() {
+      if (this.isQueen) {
+        // Queen simply stays in place and doesn't move or dig.
+        // However, she will still drop pheromones for ants to return.
+        let currentGridX = Math.floor(this.x);
+        let currentGridY = Math.floor(this.y);
+        let gridIdx = currentGridY * cols + currentGridX;
+        if (grid[gridIdx]) {
+             // Queen drops return-to-nest pheromone
+            grid[gridIdx].pher += 2.5; // Stronger pheromone
+        }
+        return;
+      }
+
+
+      let currentGridX = Math.floor(this.x);
+      let currentGridY = Math.floor(this.y);
+      let gridIdx = currentGridY * cols + currentGridX;
+
+
+      if (grid[gridIdx]) {
+        if (!this.carrying) grid[gridIdx].pher += 0.8;
+        else grid[gridIdx].pher += 1.6;
+
+
+        if (!this.carrying && grid[gridIdx].food > 0) {
+          this.carrying = 1;
+          grid[gridIdx].food--;
+        }
+      }
+
+
+      if (this.carrying) {
+        let qx = queenAnt.x, qy = queenAnt.y; // Head towards the actual queen ant's position
+        let dx = qx - this.x, dy = qy - this.y;
+        let dist = Math.hypot(dx, dy);
+        if (dist > 1) { this.dx = dx / dist; this.dy = dy / dist; }
+        if (dist < 4) this.carrying = 0;
+      } else {
+        if (Math.random() < 0.06) {
+          let best = null, bestVal = 0;
+          for (let a = 0; a < 16; ++a) {
+            let ang = Math.random() * 2 * Math.PI;
+            let tx = this.x + Math.cos(ang) * 4, ty = this.y + Math.sin(ang) * 4;
+            if (tx > 0 && ty > 0 && tx < cols - 1 && ty < rows - 1) {
+              let val = grid[Math.floor(ty) * cols + Math.floor(tx)].pher;
+              if (val > bestVal) { best = ang; bestVal = val; }
+            }
+          }
+          if (best !== null) {
+            this.dx = Math.cos(best); this.dy = Math.sin(best);
+          }
+        }
+      }
+
+
+      if (Math.random() < 0.07) { this.dx += Math.random() * 0.4 - 0.2; this.dy += Math.random() * 0.4 - 0.2; }
+      let d = Math.hypot(this.dx, this.dy);
+      if (d > 1.0) { this.dx /= d; this.dy /= d; }
+
+
+      let nx = this.x + this.dx, ny = this.y + this.dy;
+
+
+      nx = Math.max(0, Math.min(cols - 1, nx));
+      ny = Math.max(0, Math.min(rows - 1, ny));
+
+
+      let nextIdx = Math.floor(ny) * cols + Math.floor(nx);
+
+
+      if (grid[nextIdx]) {
+        if (grid[nextIdx].sand) {
+          if (Math.random() < 0.3 + 0.05 * +digSpeedSlider.value) {
+            grid[nextIdx].sand = false;
+            grid[nextIdx].tunnel = true;
+            grid[nextIdx].shade = 0.6 + Math.random() * 0.4;
+          }
+        } else if (!grid[nextIdx].sand) {
+          this.x = nx;
+          this.y = ny;
+        }
+      }
+      this.phase = (this.phase + 0.07) % 1;
+    }
+
+
+    draw(ctx) {
+      ctx.save();
+      ctx.translate(this.x * gridSize, this.y * gridSize);
+      ctx.rotate(Math.atan2(this.dy, this.dx));
+
+
+      const antScale = this.isQueen ? 1.8 : 1; // Queen is significantly larger for clear identification
+
+
+      // Body
+      ctx.beginPath();
+      ctx.ellipse(0, 0, gridSize * 0.85 * antScale, gridSize * 0.45 * antScale, 0, 0, Math.PI * 2);
+      ctx.fillStyle = this.carrying ? '#624C17' : this.color;
+      ctx.shadowColor = '#0007';
+      ctx.shadowBlur = 1;
+      ctx.fill();
+
+
+      // Head
+      ctx.beginPath();
+      ctx.arc(gridSize * 0.7 * antScale, 0, gridSize * 0.33 * antScale, 0, Math.PI * 2);
+      ctx.fillStyle = '#352d22';
+      ctx.fill();
+
+
+      // Legs (wiggly)
+      ctx.strokeStyle = '#382c17';
+      ctx.lineWidth = 1;
+      for (let l = 0; l < 3; ++l) {
+        ctx.beginPath();
+        let p = Math.sin(this.phase * 2 * Math.PI + l);
+        ctx.moveTo(-gridSize * 0.6 * antScale, (-0.7 + l * 0.7) * gridSize * 0.3 * antScale);
+        ctx.lineTo(-gridSize * 1.3 * antScale + p * gridSize * 0.6 * antScale, (-0.7 + l * 0.7) * gridSize * 0.6 * antScale);
+        ctx.stroke();
+      }
+
+
+      // Food carried
+      if (this.carrying) {
+        ctx.beginPath();
+        ctx.arc(-gridSize * 0.7 * antScale, 0, gridSize * 0.22 * antScale, 0, Math.PI * 2);
+        ctx.fillStyle = '#ddb933';
+        ctx.globalAlpha = 0.85;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+      }
+
+
+      // Crown for the queen (using Font Awesome icon)
+      if (this.isQueen) {
+          ctx.fillStyle = '#FFD700'; // Gold color
+          ctx.font = `${gridSize * 1.0 * antScale}px "Font Awesome 6 Free"`; // Adjust font size as needed
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('\uf0e3', 0, -gridSize * 0.7 * antScale); // \uf0e3 is the unicode for a crown icon
+      }
+
+
+      ctx.restore();
+    }
+  }
+
+
+
+
+  // ========== PHEROMONE TRAIL ========== //
+  function evaporatePheromones(rate) {
+    for (let i = 0; i < grid.length; ++i) grid[i].pher *= (1 - rate);
+  }
+
+
+
+
+  // ========== ANTS INIT ========== //
+  let ants = [];
+  let queenAnt = null; // Reference to the queen ant
+  function makeAnts(n) {
+    // Filter out existing queen from the array before processing others
+    const nonQueenAnts = ants.filter(ant => !ant.isQueen);
+    ants = []; // Clear current ants array
+
+
+    // Create or ensure queen exists and add her first
+    if (!queenAnt) {
+        const queenSpawnX = cols / 2;
+        const queenSpawnY = rows / 2;
+        queenAnt = new Ant(queenSpawnX, queenSpawnY, true);
+    } else {
+        // Ensure queen is at her chamber location (middle of the grid)
+        queenAnt.x = cols / 2;
+        queenAnt.y = rows / 2;
+    }
+    ants.push(queenAnt); // Add queen to the beginning of the array
+
+
+    // Add other ants, preserving existing ones if count decreases
+    if (n > 1) { // If target number of ants is more than just the queen
+        for (let i = 0; i < n - 1; ++i) { // n-1 because one ant is the queen
+            if (i < nonQueenAnts.length) {
+                ants.push(nonQueenAnts[i]); // Re-add existing non-queen ants
+            } else {
+                // Spawn new ants near the queen's center
+                let x = cols / 2 + (Math.random() * 8 - 4);
+                let y = rows / 2 + (Math.random() * 8 - 4);
+                ants.push(new Ant(x, y));
+            }
+        }
+    }
+
+
+
+
+    if (followAnt && followedAnt && !ants.includes(followedAnt)) {
+      followedAnt = ants[0] || null;
+    } else if (followAnt && !followedAnt && ants.length > 0) {
+      followedAnt = ants[0]; // If follow mode is on, default to queen
+    }
+  }
+
+
+
+
+  // ========== DRAWING ========== //
+  function draw() {
+    ctx.clearRect(0, 0, width, height);
+
+
+    const zoomLevel = +zoomSlider.value;
+    const renderGridSize = gridSize * zoomLevel;
+
+
+    ctx.save();
+
+
+    let effectiveOffsetX = dragOffsetX;
+    let effectiveOffsetY = dragOffsetY;
+
+
+    // If following an ant, override drag offset with ant's position
+    if (followAnt && followedAnt) {
+      effectiveOffsetX = canvas.width / 2 - (followedAnt.x * renderGridSize);
+      effectiveOffsetY = canvas.height / 2 - (followedAnt.y * renderGridSize);
+    }
+
+
+    // Apply bounding to effective offsets
+    const worldWidth = cols * gridSize;
+    const worldHeight = rows * gridSize;
+
+
+    const maxPanX = 0;
+    const minPanX = canvas.width - (worldWidth * zoomLevel);
+    const maxPanY = 0;
+    const minPanY = canvas.height - (worldHeight * zoomLevel);
+
+
+    // Apply bounds for X
+    if (worldWidth * zoomLevel < canvas.width) { // Content is smaller than canvas, center it
+        effectiveOffsetX = (canvas.width - worldWidth * zoomLevel) / 2;
+    } else { // Content is larger, apply bounds
+        effectiveOffsetX = Math.min(maxPanX, Math.max(minPanX, effectiveOffsetX));
+    }
+
+
+    // Apply bounds for Y
+    if (worldHeight * zoomLevel < canvas.height) { // Content is smaller than canvas, center it
+        effectiveOffsetY = (canvas.height - worldHeight * zoomLevel) / 2;
+    } else { // Content is larger, apply bounds
+        effectiveOffsetY = Math.min(maxPanY, Math.max(minPanY, effectiveOffsetY));
+    }
+
+
+    // Update dragOffsetX/Y to the bounded values so next drag starts from here
+    dragOffsetX = effectiveOffsetX;
+    dragOffsetY = effectiveOffsetY;
+
+
+
+
+    ctx.translate(effectiveOffsetX, effectiveOffsetY);
+    ctx.scale(zoomLevel, zoomLevel);
+
+
+    // Calculate visible grid range for optimized drawing
+    const startCol = Math.max(0, Math.floor((-effectiveOffsetX / zoomLevel) / gridSize));
+    const endCol = Math.min(cols, Math.ceil((canvas.width - effectiveOffsetX) / (gridSize * zoomLevel)));
+    const startRow = Math.max(0, Math.floor((-effectiveOffsetY / zoomLevel) / gridSize));
+    const endRow = Math.min(rows, Math.ceil((canvas.height - effectiveOffsetY) / (gridSize * zoomLevel)));
+
+
+
+
+    // Draw substrate, food, and tunnel shades
+    for (let y = startRow; y < endRow; ++y) {
+      for (let x = startCol; x < endCol; ++x) {
+        let cell = grid[y * cols + x];
+        if (!cell) continue;
+
+
+        if (cell.sand) {
+          ctx.fillStyle = '#cab98b';
+          ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
+        } else if (cell.tunnel) {
+          // Use the shade property for tunnels, dynamic based on digging
+          ctx.fillStyle = `rgba(90,70,49,${cell.shade || 0.7})`;
+          ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
+        }
+        // Food - Increased visibility (more opaque)
+        if (cell.food > 0) {
+          ctx.fillStyle = '#f6d82a';
+          ctx.globalAlpha = 0.75 + Math.min(1, cell.food / 40); // Increased base alpha for visibility
+          ctx.beginPath();
+          ctx.arc((x + 0.5) * gridSize, (y + 0.5) * gridSize, gridSize * 0.48, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1.0;
+        }
+      }
+    }
+
+
+    // Draw Pheromones in a separate loop AFTER other elements for correct blending
+    if (showPheromones) {
+      for (let y = startRow; y < endRow; ++y) {
+        for (let x = startCol; x < endCol; ++x) {
+          let cell = grid[y * cols + x];
+          if (!cell) continue;
+          if (cell.pher > 0.8) {
+            ctx.globalAlpha = Math.min(0.7, cell.pher / 10);
+            ctx.fillStyle = '#aafffc';
+            ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
+          }
+        }
+      }
+      ctx.globalAlpha = 1.0;
+    }
+
+
+    // Ants (draw all ants, their number is usually much smaller than grid cells)
+    // Their coordinates are already in grid units, transformed by ctx.scale
+    for (let ant of ants) {
+        ant.draw(ctx);
+    }
+
+
+
+
+    ctx.restore(); // Restore context to avoid affecting subsequent draws
+  }
+
+
+  // ========== SIMULATION LOOP ========== //
+  function step() {
+    for (let ant of ants) ant.move();
+    evaporatePheromones(+evapRateSlider.value / 1000);
+    draw();
+  }
+
+
+  function loop() {
+    if (!paused || stepOnce) {
+      step();
+      stepOnce = false;
+    }
+    requestAnimationFrame(loop);
+  }
+
+
+  // ========== INITIALIZATION AND EVENT LISTENERS ========== //
+
+
+  // Function to initialize or reset the simulation
+  function initializeSimulation() {
+    grid = makeGrid();
+    resetFood();
+    placeFood(+foodCountSlider.value);
+    makeAnts(+antSlider.value); // Re-create ants including the queen ant instance
+    // Reset pan and follow ant on reset
+    dragOffsetX = 0;
+    dragOffsetY = 0;
+    followAnt = false;
+    followedAnt = null;
+    followAntToggle.checked = false;
+    draw(); // Initial draw
+    statusbar.textContent = 'Ants dig, follow trails, pick up food, and deliver it to the queen!';
+  }
+
+
+  // Initial call to set up the simulation
+  initializeSimulation();
+  loop(); // Start the animation loop
+
+
+  // CONTROLS HOOKUP
+  antSlider.oninput = () => {
+    makeAnts(+antSlider.value);
+    updateSliderLabels();
+  };
+  digSpeedSlider.oninput = () => {
+    updateSliderLabels();
+  };
+  sandDensitySlider.oninput = () => {
+    grid = makeGrid();
+    resetFood();
+    placeFood(+foodCountSlider.value);
+    makeAnts(+antSlider.value); // Re-initialize ants to adapt to new sand density
+    updateSliderLabels();
+  };
+  foodCountSlider.oninput = () => {
+    resetFood();
+    placeFood(+foodCountSlider.value);
+    updateSliderLabels();
+  };
+  evapRateSlider.oninput = () => {
+    updateSliderLabels();
+  };
+  zoomSlider.oninput = () => {
+    updateSliderLabels();
+    draw(); // Redraw immediately on zoom change
+  };
+
+
+  document.getElementById('playPause').onclick = () => {
+    paused = !paused;
+    document.getElementById('playPause').textContent = paused ? 'Play' : 'Pause';
+  };
+  document.getElementById('step').onclick = () => { stepOnce = true; };
+  document.getElementById('reset').onclick = () => {
+    initializeSimulation(); // Call the unified initialization function
+  };
+
+
+  showPheromonesToggle.onchange = (e) => {
+    showPheromones = e.target.checked;
+  };
+
+
+  followAntToggle.onchange = (e) => {
+    followAnt = e.target.checked;
+    if (followAnt) {
+      followedAnt = queenAnt; // Always follow the queen ant
+    } else {
+      followedAnt = null;
+    }
+    // Reset panning if follow ant is enabled
+    if (followAnt) {
+      dragOffsetX = 0;
+      dragOffsetY = 0;
+    }
+  };
+
+
+  document.getElementById('spawnQueen').onclick = () => {
+    // This button will now just re-position the existing queen ant.
+    // The chamber will naturally form around her.
+    let newQueenX, newQueenY;
+    let foundSpot = false;
+    const attempts = 100;
+    for(let i = 0; i < attempts; i++) {
+      let randX = Math.floor(Math.random() * cols * 0.8) + cols * 0.1;
+      let randY = Math.floor(Math.random() * rows * 0.8) + rows * 0.1;
+      let idx = randY * cols + randX;
+      // Prefer open areas or tunnels, but allow sand if no open space
+      if (grid[idx] && (!grid[idx].sand || (grid[idx].sand && Math.random() < 0.2))) {
+        newQueenX = randX;
+        newQueenY = randY;
+        foundSpot = true;
+        break;
+      }
+    }
+
+
+    if (foundSpot) {
+      // Update queen ant's position
+      if (queenAnt) {
+        queenAnt.x = newQueenX;
+        queenAnt.y = newQueenY;
+      }
+      statusbar.textContent = `Queen moved to (${Math.floor(newQueenX)}, ${Math.floor(newQueenY)})!`;
+      draw();
+    } else {
+      statusbar.textContent = 'Could not find a suitable spot for the queen!';
+    }
+  };
+
+
+
+
+  // ========== Panning Events ==========
+  canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    canvas.classList.add('dragging');
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+    paused = true; // Pause simulation during drag
+    followAnt = false; // Disable follow ant when starting to drag
+    followAntToggle.checked = false;
+  });
+
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+      const dx = e.clientX - lastMouseX;
+      const dy = e.clientY - lastMouseY;
+
+
+      dragOffsetX += dx;
+      dragOffsetY += dy;
+
+
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+      draw(); // Redraw immediately to show panning
+    }
+  });
+
+
+  canvas.addEventListener('mouseup', () => {
+    isDragging = false;
+    canvas.classList.remove('dragging');
+    paused = false; // Resume simulation after drag
+  });
+
+
+  canvas.addEventListener('mouseleave', () => {
+    if (isDragging) {
+        isDragging = false;
+        canvas.classList.remove('dragging');
+        paused = false; // Resume simulation if drag ends due to mouse leaving
+    }
+  });
+
+
+  // Touch events for panning
+  canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      isDragging = true;
+      canvas.classList.add('dragging');
+      lastMouseX = e.touches[0].clientX;
+      lastMouseY = e.touches[0].clientY;
+      paused = true;
+      followAnt = false;
+      followAntToggle.checked = false;
+    }
+  });
+
+
+  canvas.addEventListener('touchmove', (e) => {
+    if (isDragging && e.touches.length === 1) {
+      const dx = e.touches[0].clientX - lastMouseX;
+      const dy = e.touches[0].clientY - lastMouseY;
+
+
+      dragOffsetX += dx;
+      dragOffsetY += dy;
+
+
+      lastMouseX = e.touches[0].clientX;
+      lastMouseY = e.touches[0].clientY;
+      draw();
+      e.preventDefault(); // Prevent scrolling on mobile
+    }
+  }, { passive: false }); // Use passive: false to allow preventDefault
+
+
+  canvas.addEventListener('touchend', () => {
+    isDragging = false;
+    canvas.classList.remove('dragging');
+    paused = false; // Resume simulation after drag
+  });
+
+
+
+
+  // Canvas click to select/deselect ant (only if not dragging and not currently dragging)
+  canvas.addEventListener('click', (event) => {
+    // Ensure it's not a drag-click
+    if (event.detail > 1) return; // Prevent double-click issues (like from touch double-tap)
+    if (isDragging) return; // This is a crucial check to prevent click on drag end
+
+
+
+
+    // Get mouse coordinates relative to the canvas
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+
+
+    const zoomLevel = +zoomSlider.value;
+    const renderGridSize = gridSize * zoomLevel;
+
+
+    // Convert mouse coordinates (on scaled/translated canvas) back to grid coordinates
+    // Account for current pan offset
+    const clickedGridX = Math.floor(((mouseX - dragOffsetX) / zoomLevel) / gridSize);
+    const clickedGridY = Math.floor(((mouseY - dragOffsetY) / zoomLevel) / gridSize);
+
+
+
+
+    let clickedAnt = null;
+    // Check if an ant was clicked (simple proximity check)
+    for (const ant of ants) {
+      const antGridX = Math.floor(ant.x);
+      const antGridY = Math.floor(ant.y);
+      if (Math.abs(clickedGridX - antGridX) <= 2 && Math.abs(clickedGridY - antGridY) <= 2) {
+        clickedAnt = ant;
+        break;
+      }
+    }
+
+
+    // Only allow selecting a new ant if 'followAnt' is enabled in the UI
+    if (followAntToggle.checked) { // Check the toggle button's state
+        if (clickedAnt) {
+            followedAnt = clickedAnt;
+            statusbar.textContent = `Following Ant at (${Math.floor(followedAnt.x)}, ${Math.floor(followedAnt.y)})`;
+        } else {
+            followedAnt = null; // Deselect ant if clicking empty space
+            statusbar.textContent = 'No ant selected. Click on an ant to follow!';
+        }
+    }
+  });
+
+
+
+
+  // Handle window resizing to make canvas responsive
+  function resizeCanvas() {
+    // Canvas always takes up 100% of the window for true full-screen experience
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+
+    // Recalculate cols and rows based on new canvas size and base gridSize
+    cols = Math.floor(canvas.width / gridSize);
+    rows = Math.floor(canvas.height / gridSize);
+
+
+    // Reinitialize the simulation with the new grid dimensions
+    // This also resets pan and re-centers
+    initializeSimulation();
+  }
+
+
+  // Initial resize
+  resizeCanvas();
+
+
+  // Add event listener for window resize
+  window.addEventListener('resize', resizeCanvas);
+
+
+  // Toggle controls panel
+  controlsToggleButton.addEventListener('click', () => {
+      controls.classList.toggle('collapsed');
+      // A small timeout ensures CSS transitions complete before recalculating layout
+      setTimeout(resizeCanvas, 350); // Adjust timeout to match CSS transition duration
+  });
+
+
+</script>
+</body>
+</html>
+
