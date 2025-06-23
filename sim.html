@@ -23,40 +23,37 @@
       top: 0;
       left: 0;
       height: 100vh;
-      width: 220px; /* Even thinner by default */
-      min-width: 160px; /* Adjusted min-width */
-      background: rgba(34,32,25,0.98);
-      color: #f3efd4;
+      width: 260px;
+      min-width: 180px;
+      background: #2e2e2e;
+      color: #e7e4d1;
       font-family: sans-serif;
-      box-shadow: 4px 0 32px #0006;
+      box-shadow: 4px 0 20px #0006;
       display: flex;
       flex-direction: column;
       z-index: 10;
-      transition: left 0.3s ease-in-out, width 0.3s ease-in-out, min-width 0.3s ease-in-out;
-      overflow-y: auto; /* Allow scrolling for controls if needed */
-      overflow-x: hidden; /* Hide horizontal overflow */
+      transition: left 0.3s ease-in-out;
+      overflow-y: auto;
+      overflow-x: hidden;
     }
     #controls-header {
-      padding: 1rem 0.8rem; /* Consistent padding */
-      margin-bottom: 0.5rem;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      padding: 1rem;
+      background:#3c3c3c;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
     }
     #controls-header h2 {
-      margin: 0;
-      font-size: 1.2rem;
-      white-space: nowrap; /* Prevent wrapping */
-      transition: opacity 0.3s;
+      margin:0;
+      font-size:1.3rem;
+      font-weight:bold;
     }
     #controls-content {
       flex-grow: 1;
-      padding: 0 0.8rem 1rem 0.8rem; /* Consistent padding, no top padding as header has it */
-      display: flex;
-      flex-direction: column;
-      gap: 0.7rem; /* Consistent gap between groups */
-      transition: opacity 0.3s;
+      padding: 0.5rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.8rem;
     }
 
 
@@ -103,13 +100,9 @@
 
 
     .control-group {
-      margin-bottom: 0.5em; /* Tighter spacing */
-      padding-bottom: 0.5em;
-      border-bottom: 1px dashed rgba(255,255,255,0.08); /* Subtle separator */
-      transition: opacity 0.3s;
-    }
-    .control-group:last-of-type {
-      border-bottom: none; /* No border for the last one */
+      padding: 0.4em;
+      background: #454545;
+      border-radius: 4px;
     }
     label { font-size: 0.95em; margin-bottom: 0.2em; display: block; } /* Smaller font, tighter margin */
     input[type=range] { width: 100%; -webkit-appearance: none; height: 8px; border-radius: 5px; background: #5a5a4a; outline: none; }
@@ -422,6 +415,10 @@
   let lastMouseX, lastMouseY;
   let dragOffsetX = 0; // Cumulative offset from panning
   let dragOffsetY = 0;
+  let evapIndex = 0; // Track progress for incremental pheromone evaporation
+  let terrainCanvas = document.createElement("canvas");
+  let terrainCtx = terrainCanvas.getContext("2d");
+  let activePherCells = new Set();
 
 
   // Controls
@@ -473,7 +470,37 @@
     }
     // The queen's chamber is now simply where the queen ant starts and where ants naturally tunnel.
     // We no longer explicitly mark a square area as 'queen: true' in the grid data.
+    terrainCanvas.width = cols * gridSize;
+    terrainCanvas.height = rows * gridSize;
+    renderTerrain(newGrid);
     return newGrid;
+  }
+
+  function renderTerrain(target = grid) {
+    terrainCtx.clearRect(0, 0, terrainCanvas.width, terrainCanvas.height);
+    for (let y = 0; y < rows; ++y) {
+      for (let x = 0; x < cols; ++x) {
+        const cell = target[y * cols + x];
+        drawTerrainCell(x, y, cell);
+      }
+    }
+  }
+
+  function drawTerrainCell(x, y, cell) {
+    if (cell.sand) {
+      terrainCtx.fillStyle = '#cab98b';
+    } else {
+      terrainCtx.fillStyle = `rgba(90,70,49,${cell.shade || 0.7})`;
+    }
+    terrainCtx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
+    if (cell.food > 0) {
+      terrainCtx.fillStyle = '#f6d82a';
+      terrainCtx.globalAlpha = 0.75 + Math.min(1, cell.food / 40);
+      terrainCtx.beginPath();
+      terrainCtx.arc((x + 0.5) * gridSize, (y + 0.5) * gridSize, gridSize * 0.48, 0, Math.PI * 2);
+      terrainCtx.fill();
+      terrainCtx.globalAlpha = 1;
+    }
   }
 
 
@@ -486,6 +513,7 @@
       let idx = Math.floor(y) * cols + Math.floor(x);
       if (grid[idx] && grid[idx].sand && !grid[idx].food) {
         grid[idx].food = 25 + Math.floor(Math.random() * 25);
+        drawTerrainCell(Math.floor(x), Math.floor(y), grid[idx]);
         placed++;
       }
     }
@@ -494,6 +522,7 @@
 
   function resetFood() {
     for (let i = 0; i < grid.length; ++i) grid[i].food = 0;
+    renderTerrain();
   }
 
 
@@ -527,6 +556,7 @@
         if (grid[gridIdx]) {
              // Queen drops return-to-nest pheromone
             grid[gridIdx].pher += 2.5; // Stronger pheromone
+            if (grid[gridIdx].pher > 0.8) activePherCells.add(gridIdx);
         }
         return;
       }
@@ -540,11 +570,13 @@
       if (grid[gridIdx]) {
         if (!this.carrying) grid[gridIdx].pher += 0.8;
         else grid[gridIdx].pher += 1.6;
+        if (grid[gridIdx].pher > 0.8) activePherCells.add(gridIdx);
 
 
         if (!this.carrying && grid[gridIdx].food > 0) {
           this.carrying = 1;
           grid[gridIdx].food--;
+          drawTerrainCell(currentGridX, currentGridY, grid[gridIdx]);
         }
       }
 
@@ -594,6 +626,7 @@
             grid[nextIdx].sand = false;
             grid[nextIdx].tunnel = true;
             grid[nextIdx].shade = 0.6 + Math.random() * 0.4;
+            drawTerrainCell(Math.floor(nx), Math.floor(ny), grid[nextIdx]);
           }
         } else if (!grid[nextIdx].sand) {
           this.x = nx;
@@ -671,7 +704,15 @@
 
   // ========== PHEROMONE TRAIL ========== //
   function evaporatePheromones(rate) {
-    for (let i = 0; i < grid.length; ++i) grid[i].pher *= (1 - rate);
+    if (rate <= 0) return;
+    const batchSize = Math.ceil(grid.length * 0.1); // update 10% of cells per frame
+    for (let i = 0; i < batchSize; ++i) {
+      if (evapIndex >= grid.length) evapIndex = 0;
+      const cell = grid[evapIndex];
+      cell.pher *= (1 - rate);
+      if (cell.pher <= 0.8) activePherCells.delete(evapIndex);
+      evapIndex++;
+    }
   }
 
 
@@ -712,6 +753,19 @@
             }
         }
     }
+
+    arrangeAroundQueen();
+
+  function arrangeAroundQueen() {
+    const radius = 5;
+    const count = ants.length - 1;
+    for (let i = 0; i < count; i++) {
+      const ant = ants[i + 1];
+      const angle = (i / count) * Math.PI * 2;
+      ant.x = queenAnt.x + Math.cos(angle) * radius;
+      ant.y = queenAnt.y + Math.sin(angle) * radius;
+    }
+  }
 
 
 
@@ -796,46 +850,18 @@
 
 
 
-    // Draw substrate, food, and tunnel shades
-    for (let y = startRow; y < endRow; ++y) {
-      for (let x = startCol; x < endCol; ++x) {
-        let cell = grid[y * cols + x];
-        if (!cell) continue;
-
-
-        if (cell.sand) {
-          ctx.fillStyle = '#cab98b';
-          ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
-        } else if (cell.tunnel) {
-          // Use the shade property for tunnels, dynamic based on digging
-          ctx.fillStyle = `rgba(90,70,49,${cell.shade || 0.7})`;
-          ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
-        }
-        // Food - Increased visibility (more opaque)
-        if (cell.food > 0) {
-          ctx.fillStyle = '#f6d82a';
-          ctx.globalAlpha = 0.75 + Math.min(1, cell.food / 40); // Increased base alpha for visibility
-          ctx.beginPath();
-          ctx.arc((x + 0.5) * gridSize, (y + 0.5) * gridSize, gridSize * 0.48, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.globalAlpha = 1.0;
-        }
-      }
-    }
-
-
+    // Draw cached terrain
+    ctx.drawImage(terrainCanvas,0,0);
     // Draw Pheromones in a separate loop AFTER other elements for correct blending
     if (showPheromones) {
-      for (let y = startRow; y < endRow; ++y) {
-        for (let x = startCol; x < endCol; ++x) {
-          let cell = grid[y * cols + x];
-          if (!cell) continue;
-          if (cell.pher > 0.8) {
-            ctx.globalAlpha = Math.min(0.7, cell.pher / 10);
-            ctx.fillStyle = '#aafffc';
-            ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
-          }
-        }
+      for (const idx of activePherCells) {
+        const y = Math.floor(idx / cols);
+        const x = idx % cols;
+        if (x < startCol || x >= endCol || y < startRow || y >= endRow) continue;
+        const cell = grid[idx];
+        ctx.globalAlpha = Math.min(0.7, cell.pher / 10);
+        ctx.fillStyle = "#aafffc";
+        ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
       }
       ctx.globalAlpha = 1.0;
     }
