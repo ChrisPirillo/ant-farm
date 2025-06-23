@@ -58,7 +58,7 @@
 
 
     #controls.collapsed {
-      left: -170px; /* Slide out of view (220 - 50 = 170) */
+      left: -210px; /* Slide out of view leaving toggle visible */
       width: 50px;
       min-width: 50px;
     }
@@ -141,7 +141,7 @@
     }
     canvas {
       background: #cab98b;
-      border-radius: 20px;
+      border-radius: 0;
       box-shadow: 0 0 32px #0007;
       outline: 2px solid #a5956d33;
       display: block;
@@ -151,13 +151,13 @@
     canvas.dragging {
       cursor: grabbing;
     }
-    #statusbar {
+    #foodstats {
       position: absolute;
-      bottom: 18px;
+      top: 18px;
       left: 50%;
       transform: translateX(-50%);
       background: rgba(10,10,10,0.65);
-      border-radius: 1em;
+      border-radius: 0;
       padding: 0.5em 2em;
       font-size: 1.05em;
       color: #efefcc;
@@ -362,6 +362,10 @@
         <label for="zoom">Zoom <span class="slider-value" id="zoomLabel"></span></label>
         <input type="range" id="zoom" min="1" max="7" value="3">
       </div>
+      <div class="control-group">
+        <label for="simSpeed">Sim Speed <span class="slider-value" id="simSpeedLabel"></span></label>
+        <input type="range" id="simSpeed" min="1" max="4" value="1">
+      </div>
       <div class="btn-row">
         <button id="playPause">Pause</button>
         <button id="step">Step</button>
@@ -371,10 +375,6 @@
         <label for="showPheromones">Show Pheromones</label>
         <input type="checkbox" id="showPheromones" checked>
       </div>
-      <div class="toggle-row">
-        <label for="followAnt">Follow Selected Ant</label>
-        <input type="checkbox" id="followAnt">
-      </div>
       <div class="btn-row">
         <button id="spawnQueen">Spawn Queen Egg</button>
       </div>
@@ -382,14 +382,14 @@
   </div>
   <div id="canvas-container">
     <canvas id="antfarm" width="900" height="600"></canvas>
-    <div id="statusbar"></div>
+    <div id="foodstats"></div>
   </div>
 </div>
 <script>
   // ======== CORE SIMULATION PARAMETERS ========= //
   const canvas = document.getElementById('antfarm');
   const ctx = canvas.getContext('2d');
-  const statusbar = document.getElementById('statusbar');
+  const foodstats = document.getElementById('foodstats');
   const canvasContainer = document.getElementById('canvas-container');
   const controls = document.getElementById('controls');
   const controlsToggleButton = document.getElementById('controls-toggle-button');
@@ -404,10 +404,11 @@
   let cols = Math.floor(width / gridSize);
   let rows = Math.floor(height / gridSize);
   let paused = false;
+  let simSpeed = 1;
   let showPheromones = true;
   let stepOnce = false;
-  let followAnt = false;
-  let followedAnt = null;
+  let foodCollected = 0;
+  let totalFoodCollected = parseInt(localStorage.getItem('totalFoodCollected') || '0');
 
 
   // Panning variables
@@ -434,10 +435,11 @@
   const foodCountLabel = document.getElementById('foodCountLabel');
   const zoomSlider = document.getElementById('zoom');
   const zoomLabel = document.getElementById('zoomLabel');
+  const simSpeedSlider = document.getElementById('simSpeed');
+  const simSpeedLabel = document.getElementById('simSpeedLabel');
 
 
   const showPheromonesToggle = document.getElementById('showPheromones');
-  const followAntToggle = document.getElementById('followAnt');
 
 
   // Function to update slider labels
@@ -448,6 +450,7 @@
     evapRateLabel.textContent = evapRateSlider.value;
     foodCountLabel.textContent = foodCountSlider.value;
     zoomLabel.textContent = zoomSlider.value;
+    simSpeedLabel.textContent = simSpeedSlider.value + 'x';
   }
 
 
@@ -586,7 +589,13 @@
         let dx = qx - this.x, dy = qy - this.y;
         let dist = Math.hypot(dx, dy);
         if (dist > 1) { this.dx = dx / dist; this.dy = dy / dist; }
-        if (dist < 4) this.carrying = 0;
+        if (dist < 4) {
+          this.carrying = 0;
+          foodCollected++;
+          totalFoodCollected++;
+          localStorage.setItem('totalFoodCollected', totalFoodCollected);
+          foodstats.textContent = `Food: ${foodCollected} | Total: ${totalFoodCollected}`;
+        }
       } else {
         if (Math.random() < 0.06) {
           let best = null, bestVal = 0;
@@ -770,11 +779,7 @@
 
 
 
-    if (followAnt && followedAnt && !ants.includes(followedAnt)) {
-      followedAnt = ants[0] || null;
-    } else if (followAnt && !followedAnt && ants.length > 0) {
-      followedAnt = ants[0]; // If follow mode is on, default to queen
-    }
+    // no follow ant logic
   }
 
 
@@ -796,11 +801,7 @@
     let effectiveOffsetY = dragOffsetY;
 
 
-    // If following an ant, override drag offset with ant's position
-    if (followAnt && followedAnt) {
-      effectiveOffsetX = canvas.width / 2 - (followedAnt.x * renderGridSize);
-      effectiveOffsetY = canvas.height / 2 - (followedAnt.y * renderGridSize);
-    }
+    // follow ant feature removed
 
 
     // Apply bounding to effective offsets
@@ -890,7 +891,9 @@
 
   function loop() {
     if (!paused || stepOnce) {
-      step();
+      for (let i = 0; i < simSpeed; i++) {
+        step();
+      }
       stepOnce = false;
     }
     requestAnimationFrame(loop);
@@ -906,14 +909,13 @@
     resetFood();
     placeFood(+foodCountSlider.value);
     makeAnts(+antSlider.value); // Re-create ants including the queen ant instance
-    // Reset pan and follow ant on reset
+    // Reset pan on reset
     dragOffsetX = 0;
     dragOffsetY = 0;
-    followAnt = false;
-    followedAnt = null;
-    followAntToggle.checked = false;
+    simSpeed = +simSpeedSlider.value;
+    foodCollected = 0;
+    foodstats.textContent = `Food: ${foodCollected} | Total: ${totalFoodCollected}`;
     draw(); // Initial draw
-    statusbar.textContent = 'Ants dig, follow trails, pick up food, and deliver it to the queen!';
   }
 
 
@@ -949,6 +951,10 @@
     updateSliderLabels();
     draw(); // Redraw immediately on zoom change
   };
+  simSpeedSlider.oninput = () => {
+    simSpeed = +simSpeedSlider.value;
+    updateSliderLabels();
+  };
 
 
   document.getElementById('playPause').onclick = () => {
@@ -966,19 +972,7 @@
   };
 
 
-  followAntToggle.onchange = (e) => {
-    followAnt = e.target.checked;
-    if (followAnt) {
-      followedAnt = queenAnt; // Always follow the queen ant
-    } else {
-      followedAnt = null;
-    }
-    // Reset panning if follow ant is enabled
-    if (followAnt) {
-      dragOffsetX = 0;
-      dragOffsetY = 0;
-    }
-  };
+
 
 
   document.getElementById('spawnQueen').onclick = () => {
@@ -1007,10 +1001,7 @@
         queenAnt.x = newQueenX;
         queenAnt.y = newQueenY;
       }
-      statusbar.textContent = `Queen moved to (${Math.floor(newQueenX)}, ${Math.floor(newQueenY)})!`;
       draw();
-    } else {
-      statusbar.textContent = 'Could not find a suitable spot for the queen!';
     }
   };
 
@@ -1024,8 +1015,6 @@
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
     paused = true; // Pause simulation during drag
-    followAnt = false; // Disable follow ant when starting to drag
-    followAntToggle.checked = false;
   });
 
 
@@ -1070,8 +1059,6 @@
       lastMouseX = e.touches[0].clientX;
       lastMouseY = e.touches[0].clientY;
       paused = true;
-      followAnt = false;
-      followAntToggle.checked = false;
     }
   });
 
@@ -1100,59 +1087,22 @@
     paused = false; // Resume simulation after drag
   });
 
-
-
-
-  // Canvas click to select/deselect ant (only if not dragging and not currently dragging)
-  canvas.addEventListener('click', (event) => {
-    // Ensure it's not a drag-click
-    if (event.detail > 1) return; // Prevent double-click issues (like from touch double-tap)
-    if (isDragging) return; // This is a crucial check to prevent click on drag end
-
-
-
-
-    // Get mouse coordinates relative to the canvas
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
-
-
-    const zoomLevel = +zoomSlider.value;
-    const renderGridSize = gridSize * zoomLevel;
-
-
-    // Convert mouse coordinates (on scaled/translated canvas) back to grid coordinates
-    // Account for current pan offset
-    const clickedGridX = Math.floor(((mouseX - dragOffsetX) / zoomLevel) / gridSize);
-    const clickedGridY = Math.floor(((mouseY - dragOffsetY) / zoomLevel) / gridSize);
-
-
-
-
-    let clickedAnt = null;
-    // Check if an ant was clicked (simple proximity check)
-    for (const ant of ants) {
-      const antGridX = Math.floor(ant.x);
-      const antGridY = Math.floor(ant.y);
-      if (Math.abs(clickedGridX - antGridX) <= 2 && Math.abs(clickedGridY - antGridY) <= 2) {
-        clickedAnt = ant;
-        break;
-      }
+  // Mouse wheel to control zoom
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const current = +zoomSlider.value;
+    if (e.deltaY < 0) {
+      zoomSlider.value = Math.max(zoomSlider.min, current - 1);
+    } else {
+      zoomSlider.value = Math.min(zoomSlider.max, current + 1);
     }
-
-
-    // Only allow selecting a new ant if 'followAnt' is enabled in the UI
-    if (followAntToggle.checked) { // Check the toggle button's state
-        if (clickedAnt) {
-            followedAnt = clickedAnt;
-            statusbar.textContent = `Following Ant at (${Math.floor(followedAnt.x)}, ${Math.floor(followedAnt.y)})`;
-        } else {
-            followedAnt = null; // Deselect ant if clicking empty space
-            statusbar.textContent = 'No ant selected. Click on an ant to follow!';
-        }
-    }
+    updateSliderLabels();
+    draw();
   });
+
+
+
+
 
 
 
@@ -1186,8 +1136,6 @@
   // Toggle controls panel
   controlsToggleButton.addEventListener('click', () => {
       controls.classList.toggle('collapsed');
-      // A small timeout ensures CSS transitions complete before recalculating layout
-      setTimeout(resizeCanvas, 350); // Adjust timeout to match CSS transition duration
   });
 
 
